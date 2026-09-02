@@ -35,8 +35,7 @@ function results = MainTwoLayerScript()
     S.alphathf = 4.42e-6;   % Film thermal expansion coefficient [K^-1]
     S.alphaths = 7.07e-6;   % Substrate thermal expansion coefficient [K^-1]
 
-%% User inputs: mandatory [alpha_f, alpha_s, R] fit
-    % Every fit always optimizes all three values in this order.
+%% User inputs: [alpha_f, alpha_s, R] guess and bounds
     S.p0 = [6.7e-5,2.7e-5,1e-10];
     S.pLower = [1.5e-7,1.5e-7,1e-14];
     S.pUpper = [1e-1,1e-1,1e-6];
