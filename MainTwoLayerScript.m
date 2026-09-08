@@ -52,6 +52,8 @@ function results = MainTwoLayerScript()
     S.gtol = 1e-8;
     S.boundTolerance = 1e-6; % Bound test in log10 parameter coordinates
     S.dx = 2e-3;             % Finite-difference step in log10 coordinates
+    S.multistartCount = 24;   % Total final-fit starts per run
+    S.multistartSeed = 1;     % Reproducible log-space start-point sampling
     S.display = "off";       % Solver output; run progress still prints
 
 %% User inputs: plotting
@@ -68,20 +70,19 @@ function results = MainTwoLayerScript()
         error("TGS:SpotSelection", "Prepared runs do not match the calibration-selected spot.");
     end
 
-%% Fit each run and combine repeated estimates
+%% Fit each run independently
     fit = fitTwoLayerTGSRuns(traces,S);
 
-%% Package the spot-level result
+%% Package the ordered per-run results without averaging
     results.spot = spot;
-    results.alpha_f = fit.p(1);
-    results.alpha_s = fit.p(2);
-    results.R = fit.p(3);
+    results.run = fit.run;
+    results.p = fit.p;
+    results.alpha_f = fit.p(:,1);
+    results.alpha_s = fit.p(:,2);
+    results.R = fit.p(:,3);
     results.x = fit.x;
     results.sensitivity = fit.sensitivity;
     results.parameterError = fit.parameterError;
-    results.withinFitError = fit.withinFitError;
-    results.betweenRunStd = fit.betweenRunStd;
-    results.parameterRunCount = fit.parameterRunCount;
     results.parameterIdentifiable = fit.parameterIdentifiable;
     results.identifiable = fit.identifiable;
     results.traces = fit.traces;
@@ -93,6 +94,10 @@ function results = MainTwoLayerScript()
     results.objectiveResnorm = fit.objectiveResnorm;
     results.exitflag = fit.exitflag;
     results.output = fit.output;
+    results.startResults = fit.startResults;
+    results.selectedStart = fit.selectedStart;
+    results.startCount = fit.startCount;
+    results.successfulStartCount = fit.successfulStartCount;
     results.atLowerBound = fit.atLowerBound;
     results.atUpperBound = fit.atUpperBound;
     results.jacobianRank = fit.jacobianRank;
@@ -102,26 +107,15 @@ function results = MainTwoLayerScript()
     results.physicalJacobianCondition = fit.physicalJacobianCondition;
     results.physicalDegreesOfFreedom = fit.physicalDegreesOfFreedom;
 
-%% Report parameter and run diagnostics
-    parameterName = ["alpha_f";"alpha_s";"R"];
-    unit = ["m^2/s";"m^2/s";"m^2 K/W"];
-    results.summary = table( repmat(spot,3,1),parameterName,fit.p(:),fit.sensitivity(:), ...
-        fit.parameterError(:),fit.withinFitError(:), fit.betweenRunStd(:),fit.parameterRunCount(:), ...
-        repmat(fit.runCount,3,1),fit.parameterIdentifiable(:), fit.atLowerBound(:),fit.atUpperBound(:),unit, ...
-        'VariableNames',{'Spot','Symbol','Value','LocalSensitivity', 'CombinedError','WithinFitError','BetweenRunStd','RunsUsed', ...
-        'RunsTotal','Identifiable','AnyAtLowerBound', 'AnyAtUpperBound','Unit'});
-
+%% Report each run in acquisition order
+    results.summary = results.runSummary;
     fprintf("spot %d, %d run(s), 1 grating\n",spot,fit.runCount);
-    disp(results.summary)
     disp(results.runSummary)
-    fprintf("successful optimizer exits = %d/%d\n", nnz(fit.exitflag > 0),fit.runCount);
-    fprintf("unweighted ||r||_2 = %.6g\n",norm(fit.r));
-    fprintf("full-rank physical Jacobians = %d/%d\n", nnz(fit.physicalJacobianRank == 3),fit.runCount);
 
-%% Plot run-level fits and physical sensitivities
+%% Create one fit-and-sensitivity figure per run
     if S.makePlots
-        results.figure = plotTwoLayerTGSResults(results,S);
+        results.figures = plotTwoLayerTGSResults(results,S);
     else
-        results.figure = gobjects(0);
+        results.figures = gobjects(0,1);
     end
 end
