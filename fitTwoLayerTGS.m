@@ -19,31 +19,66 @@ function fit = fitTwoLayerTGS(trace,S)
     initializationData = initializationWeight*initializationTrace.y(:);
     dummyData = zeros(size(initializationData));
     initializationModel = @(x,xdata) weightedThermalModel( x,xdata,initializationTrace,S,initializationWeight);
-    xThermal = lsqcurvefit(initializationModel,x0,dummyData, initializationData,lowerX,upperX,options);
+    try
+        xThermal = lsqcurvefit(initializationModel,x0,dummyData, ...
+            initializationData,lowerX,upperX,options);
+    catch exception
+        if strcmp(exception.identifier,"MATLAB:OperationTerminated")
+            rethrow(exception)
+        end
+        warning("TGS:Initialization", ...
+            "Thermal prefit failed (%s); continuing with multistart points.", ...
+            exception.message);
+        xThermal = x0;
+    end
     xThermal = xThermal(:).';
 
 %% Fit the unsmoothed thermal and displacement response
     fitTrace = finalFitTrace(trace,S);
-    finalStarts = unique([xThermal;x0],"rows","stable");
+    finalStarts = multistartPoints([xThermal;x0],lowerX,upperX,S);
     finalWeight = traceWeight(fitTrace);
     measuredWeighted = finalWeight*fitTrace.y(:);
     dummyData = zeros(size(measuredWeighted));
     thermalModel = @(x,xdata) weightedThermalModel( x,xdata,fitTrace,S,finalWeight);
 
-    startResults = repmat(struct( "x0",[],"x",[],"resnorm",Inf,"exitflag",NaN,"output",[]), size(finalStarts,1),1);
+    startResults = repmat(struct("x0",[],"x",nan(1,3), ...
+        "resnorm",Inf,"exitflag",NaN,"output",[], ...
+        "errorIdentifier","","errorMessage",""),size(finalStarts,1),1);
     bestResnorm = Inf;
     selectedStart = NaN;
+    bestConverged = false;
 
     for startIndex = 1:size(finalStarts,1)
-        [candidateX,candidateResnorm,candidateResidual,candidateExitflag,candidateOutput,~,candidateJacobian] = lsqcurvefit(thermalModel,finalStarts(startIndex,:), dummyData,measuredWeighted,lowerX,upperX,options);
-
         startResults(startIndex).x0 = finalStarts(startIndex,:);
+        try
+            [candidateX,candidateResnorm,candidateResidual, ...
+                candidateExitflag,candidateOutput,~,candidateJacobian] = ...
+                lsqcurvefit(thermalModel,finalStarts(startIndex,:), ...
+                dummyData,measuredWeighted,lowerX,upperX,options);
+        catch exception
+            if strcmp(exception.identifier,"MATLAB:OperationTerminated")
+                rethrow(exception)
+            end
+            startResults(startIndex).errorIdentifier = string(exception.identifier);
+            startResults(startIndex).errorMessage = string(exception.message);
+            continue
+        end
+
         startResults(startIndex).x = candidateX(:).';
         startResults(startIndex).resnorm = candidateResnorm;
         startResults(startIndex).exitflag = candidateExitflag;
         startResults(startIndex).output = candidateOutput;
 
-        if candidateResnorm < bestResnorm
+        candidateIsFinite = isfinite(candidateResnorm) && ...
+            all(isfinite(candidateX));
+        candidateConverged = candidateIsFinite && candidateExitflag > 0;
+        candidateIsBetter = candidateIsFinite && ...
+            (~isfinite(selectedStart) || ...
+            (candidateConverged && ~bestConverged) || ...
+            (candidateConverged == bestConverged && ...
+            candidateResnorm < bestResnorm));
+
+        if candidateIsBetter
             bestX = candidateX(:).';
             bestResnorm = candidateResnorm;
             objectiveResidual = candidateResidual;
@@ -51,11 +86,28 @@ function fit = fitTwoLayerTGS(trace,S)
             output = candidateOutput;
             jacobian = candidateJacobian;
             selectedStart = startIndex;
+            bestConverged = candidateConverged;
         end
     end
 
     if ~isfinite(selectedStart)
-        error("TGS:Optimization","The optimizer did not return a finite thermal-model solution.");
+        errorMessages = string({startResults.errorMessage});
+        firstError = find(strlength(errorMessages) > 0,1);
+        if isempty(firstError)
+            detail = "No trial returned finite parameters and an objective.";
+        else
+            detail = "First trial error: " + errorMessages(firstError);
+        end
+        error("TGS:Optimization", ...
+            "All %d multistart trials failed. %s",numel(startResults),detail);
+    end
+
+    successfulStart = arrayfun(@(trial) trial.exitflag > 0 && ...
+        isfinite(trial.resnorm) && all(isfinite(trial.x)),startResults);
+    successfulStartCount = nnz(successfulStart);
+    if successfulStartCount == 0
+        warning("TGS:Optimization", ...
+            "No multistart trial reported convergence; using the lowest finite objective.");
     end
 
 %% Reconstruct the unweighted thermal-model signal
@@ -93,6 +145,7 @@ function fit = fitTwoLayerTGS(trace,S)
     fit.output = output;
     fit.startResults = startResults;
     fit.selectedStart = selectedStart;
+    fit.successfulStartCount = successfulStartCount;
     fit.J = jacobian;
     fit.atLowerBound = atLowerBound;
     fit.atUpperBound = atUpperBound;
@@ -146,6 +199,55 @@ function [x0,lowerX,upperX] = physicalSearchSpace(S)
     x0 = log10(p0);
     lowerX = log10(lower);
     upperX = log10(upper);
+end
+
+function starts = multistartPoints(primaryStarts,lowerX,upperX,S)
+% Build reproducible, space-filling starts in log10 parameter coordinates.
+
+    startCount = 24;
+    if isfield(S,"multistartCount")
+        startCount = double(S.multistartCount);
+    end
+    if ~isscalar(startCount) || ~isfinite(startCount) || ...
+            startCount < 4 || startCount ~= fix(startCount)
+        error("TGS:Multistart", ...
+            "S.multistartCount must be an integer of at least 4.");
+    end
+
+    seed = 1;
+    if isfield(S,"multistartSeed")
+        seed = double(S.multistartSeed);
+    end
+    if ~isscalar(seed) || ~isfinite(seed) || seed < 0 || ...
+            seed > double(intmax("uint32")) || seed ~= fix(seed)
+        error("TGS:Multistart", ...
+            "S.multistartSeed must be an integer from 0 through 2^32-1.");
+    end
+
+    validPrimary = all(isfinite(primaryStarts),2) & ...
+        all(primaryStarts >= lowerX & primaryStarts <= upperX,2);
+    midpoint = (lowerX+upperX)/2;
+    anchors = unique([primaryStarts(validPrimary,:);midpoint], ...
+        "rows","stable");
+    anchors = anchors(1:min(startCount,size(anchors,1)),:);
+    spaceCount = startCount-size(anchors,1);
+
+    if spaceCount == 0
+        starts = anchors;
+        return
+    end
+
+    % Stratify every coordinate independently, then permute its strata.
+    stream = RandStream("mt19937ar","Seed",seed);
+    unitPoints = zeros(spaceCount,numel(lowerX));
+    for parameterIndex = 1:numel(lowerX)
+        strata = randperm(stream,spaceCount).';
+        unitPoints(:,parameterIndex) = ...
+            (strata-1+rand(stream,spaceCount,1))/spaceCount;
+    end
+
+    spaceStarts = lowerX+unitPoints.*(upperX-lowerX);
+    starts = [anchors;spaceStarts];
 end
 
 function fitTrace = finalFitTrace(trace,S)
