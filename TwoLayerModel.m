@@ -33,10 +33,10 @@ function [temperature,displacement] = TwoLayerModel(t,Lambda,p,S)
     q = 2*pi/Lambda;
     filmConductivity = S.Cf*alpha_f;
     substrateConductivity = S.Cs*alpha_s;
-    filmShearModulus = S.Ef/(2*(1+S.nuf));
-    substrateShearModulus = S.Es/(2*(1+S.nus));
-    filmThermoelasticCoupling = S.alphathf*(1+S.nuf)/(1-S.nuf);
-    substrateThermoelasticCoupling = S.alphaths*(1+S.nus)/(1-S.nus);
+    Lame_f = S.Ef/(2*(1+S.nuf));
+    Lame_s = S.Es/(2*(1+S.nus));
+    gamma_f = S.alphathf*(1+S.nuf)/(1-S.nuf);
+    gamma_s = S.alphaths*(1+S.nus)/(1-S.nus);
 
 %% Build the symmetric angular-frequency grid
     positiveCount = S.Nw/2;
@@ -47,7 +47,7 @@ function [temperature,displacement] = TwoLayerModel(t,Lambda,p,S)
 
 %% Assemble the elastic boundary-condition system
     exp2qL = exp(2*q*L);
-    shearRatio = substrateShearModulus/filmShearModulus;
+    shearRatio = Lame_s/Lame_f;
     elasticMatrix = [ 1, 2*S.nuf-2,      1,      2-2*S.nuf,               0,           0; ...
                       1, 2*S.nuf-1,     -1,      2*S.nuf-1,               0,           0; ...
                       1, q*L-3+4*S.nuf, -exp2qL, exp2qL*(4*S.nuf-q*L-3), -1,           3-4*S.nus-q*L; ...
@@ -75,16 +75,16 @@ function [temperature,displacement] = TwoLayerModel(t,Lambda,p,S)
         B_f_interface = commonFactor*interfaceFactor*interfaceDecay;
         A_s_interface = 2*commonFactor*interfaceDecay;
 
-        elasticForcing = [ filmThermoelasticCoupling*beta_f*(A_f-B_f)/r_f; ...
-                           filmThermoelasticCoupling*q*(A_f+B_f)/r_f; ...
-                           filmThermoelasticCoupling*q*(A_f_interface+B_f_interface)/r_f-substrateThermoelasticCoupling*q*A_s_interface/r_s; ...
-                           filmThermoelasticCoupling*beta_f*(A_f_interface-B_f_interface)/r_f-substrateThermoelasticCoupling*beta_s*A_s_interface/r_s; ...
-                           filmThermoelasticCoupling*beta_f*(A_f_interface-B_f_interface)/r_f-shearRatio*substrateThermoelasticCoupling*beta_s*A_s_interface/r_s; ...
-                           filmThermoelasticCoupling*q*(A_f_interface+B_f_interface)/r_f-shearRatio*substrateThermoelasticCoupling*q*A_s_interface/r_s];
+        elasticForcing = [ gamma_f*beta_f*(A_f-B_f)/r_f; ...
+                           gamma_f*q*(A_f+B_f)/r_f; ...
+                           gamma_f*q*(A_f_interface+B_f_interface)/r_f-gamma_s*q*A_s_interface/r_s; ...
+                           gamma_f*beta_f*(A_f_interface-B_f_interface)/r_f-gamma_s*beta_s*A_s_interface/r_s; ...
+                           gamma_f*beta_f*(A_f_interface-B_f_interface)/r_f-shearRatio*gamma_s*beta_s*A_s_interface/r_s; ...
+                           gamma_f*q*(A_f_interface+B_f_interface)/r_f-shearRatio*gamma_s*q*A_s_interface/r_s];
         elasticCoefficients = elasticSolver\elasticForcing;
 
         temperaturePositive(frequencyIndex) = A_f + B_f;
-        displacementPositive(frequencyIndex) = filmThermoelasticCoupling*beta_f*(B_f-A_f)/r_f + elasticCoefficients(1)+elasticCoefficients(3);
+        displacementPositive(frequencyIndex) = gamma_f*beta_f*(B_f-A_f)/r_f + elasticCoefficients(1)+elasticCoefficients(3);
     end
 
 %% Reconstruct the time-domain responses
