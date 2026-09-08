@@ -1,5 +1,5 @@
 function [traces,selectedSpot] = prepareTGSData(S)
-%PREPARETGSDATA Load and preprocess one spot's repeated TGS runs.
+% Load and preprocess one spot's repeated TGS runs.
 % Inputs:
 %   S            - File, calibration, and preprocessing settings.
 % Outputs:
@@ -177,7 +177,7 @@ function [traces,selectedSpot] = prepareTGSData(S)
 end
 
 function traces = finalizeRuns(traces,S)
-%FINALIZERUNS Preserve full data and downsample only nonlinear-fit arrays.
+% Preserve full data and downsample only nonlinear-fit arrays.
 
     for i = 1:numel(traces)
         t = traces(i).t(:);
@@ -199,7 +199,7 @@ function traces = finalizeRuns(traces,S)
 end
 
 function [t,y,path] = baselineTrace(nominal,polarity,files,baseline,S)
-%BASELINETRACE Return an exact or spacing-interpolated baseline trace.
+% Return an exact or spacing-interpolated baseline trace.
     records = baseline([files(baseline).polarity] == polarity);
     nominalList = unique([files(records).nominal]);
     exact = records([files(records).nominal] == nominal);
@@ -236,7 +236,7 @@ function [t,y,path] = baselineTrace(nominal,polarity,files,baseline,S)
 end
 
 function [t,y] = readTrace(path,S)
-%READTRACE Read configured columns and discard rows containing nonfinite data.
+% Read configured columns and discard rows containing nonfinite data.
 
     A = readmatrix(path,"NumHeaderLines",S.nHeader);
     t = A(:,S.tCol)*S.tScale;
@@ -247,7 +247,7 @@ function [t,y] = readTrace(path,S)
 end
 
 function [t,yp,yn] = commonGrid(tp,yp,tn,yn)
-%COMMONGRID Interpolate any two traces onto their shared time interval.
+% Interpolate any two traces onto their shared time interval.
     
     if isequal(tp, tn)
         t = tp;
@@ -271,7 +271,7 @@ function [t,yp,yn] = commonGrid(tp,yp,tn,yn)
 end
 
 function t0 = arrivalTime(t,y,S)
-%ARRIVALTIME Estimate pump arrival from curvature near the signal maximum.
+% Estimate pump arrival from curvature near the signal maximum.
     index = find(t >= S.tSearch(1) & t <= S.tSearch(2));
     ys = y(index);
     [~, imax] = max(ys);
@@ -282,13 +282,13 @@ function t0 = arrivalTime(t,y,S)
 end
 
 function k = key(value)
-%KEY Create a stable text key for a nominal grating value.
+% Create a stable text key for a nominal grating value.
 
     k = sprintf("%.12g", value);
 end
 
 function spacingUm = calibrationSpacing(calibrationTable)
-%CALIBRATIONSPACING Read calibrated spacing from supported table headers.
+% Read calibrated spacing from supported table headers.
 
     variableName = string(calibrationTable.Properties.VariableNames);
     supportedName = ["grating_spacing_um","grating_value[um]"];
@@ -301,7 +301,7 @@ function spacingUm = calibrationSpacing(calibrationTable)
 end
 
 function nominalUm = calibrationNominal(runName)
-%CALIBRATIONNOMINAL Extract nominal micrometers before the spot identifier.
+% Extract nominal micrometers before the spot identifier.
 
     token = regexp(char(runName), ...
         "(?<nominal>\d+(?:\.\d+)?)(?:um)?(?=[_-]spot\d+)", ...
@@ -314,7 +314,7 @@ function nominalUm = calibrationNominal(runName)
 end
 
 function spot = calibrationSpot(runName,calibrationName)
-%CALIBRATIONSPOT Require calibration rows to identify exactly one spot.
+% Require calibration rows to identify exactly one spot.
 
     spotByRow = nan(numel(runName),1);
 
