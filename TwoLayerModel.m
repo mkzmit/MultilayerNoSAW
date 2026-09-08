@@ -29,7 +29,7 @@ function [temperature,displacement] = TwoLayerModel(t,Lambda,p,S)
     alpha_f = p(1);
     alpha_s = p(2);
     R = p(3);
-    filmThickness = S.L;
+    L = S.L;
     q = 2*pi/Lambda;
     filmConductivity = S.Cf*alpha_f;
     substrateConductivity = S.Cs*alpha_s;
@@ -46,15 +46,14 @@ function [temperature,displacement] = TwoLayerModel(t,Lambda,p,S)
     displacementPositive = complex(zeros(size(omegaPositive)));
 
 %% Assemble the elastic boundary-condition system
-    exp2qL = exp(2*q*filmThickness);
+    exp2qL = exp(2*q*L);
     shearRatio = substrateShearModulus/filmShearModulus;
-    elasticMatrix = [ ...
-        1, 2*S.nuf-2,                 1,       2-2*S.nuf,                          0,           0; ...
-        1, 2*S.nuf-1,                 -1,      2*S.nuf-1,                          0,           0; ...
-        1, q*filmThickness-3+4*S.nuf, -exp2qL, exp2qL*(4*S.nuf-q*filmThickness-3), -1,          3-4*S.nus-q*filmThickness; ...
-        1, q*filmThickness,           exp2qL,  q*filmThickness*exp2qL,             -1,          -q*filmThickness; ...
-        1, q*filmThickness-2+2*S.nuf, exp2qL,  exp2qL*(q*filmThickness+2-2*S.nuf), -shearRatio, (2-2*S.nus-q*filmThickness)*shearRatio; ...
-        1, q*filmThickness-1+2*S.nuf, -exp2qL, exp2qL*(2*S.nuf-q*filmThickness-1), -shearRatio, (1-2*S.nus-q*filmThickness)*shearRatio];
+    elasticMatrix = [ 1, 2*S.nuf-2,      1,      2-2*S.nuf,               0,           0; ...
+                      1, 2*S.nuf-1,     -1,      2*S.nuf-1,               0,           0; ...
+                      1, q*L-3+4*S.nuf, -exp2qL, exp2qL*(4*S.nuf-q*L-3), -1,           3-4*S.nus-q*L; ...
+                      1, q*L,            exp2qL, q*L*exp2qL,             -1,          -q*L; ...
+                      1, q*L-2+2*S.nuf,  exp2qL, exp2qL*(q*L+2-2*S.nuf), -shearRatio,  (2-2*S.nus-q*L)*shearRatio; ...
+                      1, q*L-1+2*S.nuf, -exp2qL, exp2qL*(2*S.nuf-q*L-1), -shearRatio,  (1-2*S.nus-q*L)*shearRatio];
     elasticSolver = decomposition(elasticMatrix,"lu"); % factors matrix using LU decomposition
 
 %% Solve the coupled response at each positive frequency
@@ -67,11 +66,11 @@ function [temperature,displacement] = TwoLayerModel(t,Lambda,p,S)
 
         conductivityRatio = substrateConductivity*beta_s/(filmConductivity*beta_f);
         interfaceFactor = 1 - conductivityRatio + substrateConductivity*beta_s*R;
-        thermalDenominator = 2*conductivityRatio + interfaceFactor*(1-exp(-2*beta_f*filmThickness));
+        thermalDenominator = 2*conductivityRatio + interfaceFactor*(1-exp(-2*beta_f*L));
         commonFactor = S.Q0/(filmConductivity*beta_f*thermalDenominator);
-        interfaceDecay = exp((q-beta_f)*filmThickness);
+        interfaceDecay = exp((q-beta_f)*L);
         A_f = commonFactor*(2*conductivityRatio+interfaceFactor);
-        B_f = commonFactor*interfaceFactor*exp(-2*beta_f*filmThickness);
+        B_f = commonFactor*interfaceFactor*exp(-2*beta_f*L);
         A_f_interface = commonFactor* (2*conductivityRatio+interfaceFactor)*interfaceDecay;
         B_f_interface = commonFactor*interfaceFactor*interfaceDecay;
         A_s_interface = 2*commonFactor*interfaceDecay;
