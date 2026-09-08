@@ -1,5 +1,5 @@
 function figureHandle = plotTwoLayerTGSResults(results,S)
-%PLOTTWOLAYERTGSRESULTS Plot repeated-run fits and physical sensitivities.
+% Plot repeated-run fits and physical sensitivities.
 % Inputs:
 %   results      - Spot-level output from MainTwoLayerScript.
 %   S            - Plot settings containing figureVisible.
@@ -8,8 +8,7 @@ function figureHandle = plotTwoLayerTGSResults(results,S)
 
 %% Create the one-spot, one-grating layout
     traces = results.traces;
-    figureHandle = figure("Visible",S.figureVisible, ...
-        "Color","white","Name",sprintf("TGS spot %d",results.spot));
+    figureHandle = figure("Visible",S.figureVisible,"Name",sprintf("TGS spot %d",results.spot));
     layout = tiledlayout(2,1,"TileSpacing","compact","Padding","compact");
     title(layout,sprintf("TGS fit and sensitivity for spot %d",results.spot))
 
@@ -39,7 +38,7 @@ function figureHandle = plotTwoLayerTGSResults(results,S)
     legend("Location","best")
     grid on
 
-%% Plot sensitivity for all three mandatory physical parameters
+%% Plot sensitivity for physical parameters
     nexttile
     parameterName = categorical(["alpha_f","alpha_s","R"]);
     sensitivity = max(results.sensitivity(:),realmin);
