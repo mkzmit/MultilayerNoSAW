@@ -1,22 +1,15 @@
 function fit = fitTwoLayerTGS(trace,S)
-%FITTWOLAYERTGS Fit alpha_f, alpha_s, and R for one measured run.
+% Fit alpha_f, alpha_s, and R for one  run
 % Inputs:
-%   trace - Scalar prepared-trace structure from prepareTGSData.
-%   S     - Model, bounds, smoothing, and optimizer settings.
+%   trace - Scalar prepared-trace structure from prepareTGSData
+%   S - Model, bounds, smoothing, and optimizer settings
 % Output:
-%   fit   - Thermal-model parameters, reconstructed signal, and diagnostics.
+%   fit - Thermal-model parameters, reconstructed signal, and diagnostics
 
-%% Validate the one-run, three-parameter fit contract
+%% Validate 
     if ~isscalar(trace)
-        error("TGS:OneRunFit", ...
-            "fitTwoLayerTGS fits one run at a time; use fitTwoLayerTGSRuns for repeats.");
+        error("TGS:OneRunFit", "fitTwoLayerTGS fits one run at a time; use fitTwoLayerTGSRuns for repeats.");
     end
-
-    if isfield(S,"fitParameters")
-        error("TGS:RemovedOption", ...
-            "S.fitParameters has been removed; alpha_f, alpha_s, and R are always fitted.");
-    end
-
     [x0,lowerX,upperX] = physicalSearchSpace(S);
     options = fittingOptions(S);
 
@@ -25,10 +18,8 @@ function fit = fitTwoLayerTGS(trace,S)
     initializationWeight = traceWeight(initializationTrace);
     initializationData = initializationWeight*initializationTrace.y(:);
     dummyData = zeros(size(initializationData));
-    initializationModel = @(x,xdata) weightedThermalModel( ...
-        x,xdata,initializationTrace,S,initializationWeight);
-    xThermal = lsqcurvefit(initializationModel,x0,dummyData, ...
-        initializationData,lowerX,upperX,options);
+    initializationModel = @(x,xdata) weightedThermalModel( x,xdata,initializationTrace,S,initializationWeight);
+    xThermal = lsqcurvefit(initializationModel,x0,dummyData, initializationData,lowerX,upperX,options);
     xThermal = xThermal(:).';
 
 %% Fit the unsmoothed thermal and displacement response
@@ -37,20 +28,14 @@ function fit = fitTwoLayerTGS(trace,S)
     finalWeight = traceWeight(fitTrace);
     measuredWeighted = finalWeight*fitTrace.y(:);
     dummyData = zeros(size(measuredWeighted));
-    thermalModel = @(x,xdata) weightedThermalModel( ...
-        x,xdata,fitTrace,S,finalWeight);
+    thermalModel = @(x,xdata) weightedThermalModel( x,xdata,fitTrace,S,finalWeight);
 
-    startResults = repmat(struct( ...
-        "x0",[],"x",[],"resnorm",Inf,"exitflag",NaN,"output",[]), ...
-        size(finalStarts,1),1);
+    startResults = repmat(struct( "x0",[],"x",[],"resnorm",Inf,"exitflag",NaN,"output",[]), size(finalStarts,1),1);
     bestResnorm = Inf;
     selectedStart = NaN;
 
     for startIndex = 1:size(finalStarts,1)
-        [candidateX,candidateResnorm,candidateResidual, ...
-            candidateExitflag,candidateOutput,~,candidateJacobian] = ...
-            lsqcurvefit(thermalModel,finalStarts(startIndex,:), ...
-            dummyData,measuredWeighted,lowerX,upperX,options);
+        [candidateX,candidateResnorm,candidateResidual,candidateExitflag,candidateOutput,~,candidateJacobian] = lsqcurvefit(thermalModel,finalStarts(startIndex,:), dummyData,measuredWeighted,lowerX,upperX,options);
 
         startResults(startIndex).x0 = finalStarts(startIndex,:);
         startResults(startIndex).x = candidateX(:).';
@@ -70,8 +55,7 @@ function fit = fitTwoLayerTGS(trace,S)
     end
 
     if ~isfinite(selectedStart)
-        error("TGS:Optimization", ...
-            "The optimizer did not return a finite thermal-model solution.");
+        error("TGS:Optimization","The optimizer did not return a finite thermal-model solution.");
     end
 
 %% Reconstruct the unweighted thermal-model signal
@@ -81,8 +65,7 @@ function fit = fitTwoLayerTGS(trace,S)
 
 %% Calculate uncertainty and identifiability diagnostics
     boundTolerance = S.dx;
-    if isfield(S,"boundTolerance") && isfinite(S.boundTolerance) && ...
-            S.boundTolerance >= 0
+    if isfield(S,"boundTolerance") && isfinite(S.boundTolerance) && S.boundTolerance >= 0
         boundTolerance = S.boundTolerance;
     end
 
@@ -133,7 +116,7 @@ function fit = fitTwoLayerTGS(trace,S)
 end
 
 function [x0,lowerX,upperX] = physicalSearchSpace(S)
-%PHYSICALSEARCHSPACE Validate and log-transform the three physical inputs.
+% Validate and log-transform the three physical inputs.
 
     requiredFields = ["p0","pLower","pUpper"];
     for fieldName = requiredFields
@@ -166,7 +149,7 @@ function [x0,lowerX,upperX] = physicalSearchSpace(S)
 end
 
 function fitTrace = finalFitTrace(trace,S)
-%FINALFITTRACE Apply an optional fixed post-pump delay to the final fit.
+% Apply an optional fixed post-pump delay to the final fit.
 
     startTime = 0;
     if isfield(S,"fitStartTime")
@@ -180,8 +163,7 @@ function fitTrace = finalFitTrace(trace,S)
     y = trace.y(:);
     use = t >= startTime;
     if nnz(use) < 10
-        error("TGS:FitWindow", ...
-            "The final fit window contains fewer than 10 points.");
+        error("TGS:FitWindow", "The final fit window contains fewer than 10 points.");
     end
 
     fitTrace = trace;
@@ -190,7 +172,7 @@ function fitTrace = finalFitTrace(trace,S)
 end
 
 function options = fittingOptions(S)
-%FITTINGOPTIONS Build bounded least-squares options for both thermal stages.
+% Build bounded least-squares options for both thermal stages
 
     options = optimoptions("lsqcurvefit", ...
         "Algorithm","trust-region-reflective", ...
@@ -205,10 +187,9 @@ function options = fittingOptions(S)
 end
 
 function thermalTrace = smoothThermalTrace(trace,S)
-%SMOOTHTHERMALTRACE Smooth the full-resolution signal for initialization.
+% Smooth the full-resolution signal for initialization
 
-    if isfield(trace,"tFull") && isfield(trace,"yFull") && ...
-            ~isempty(trace.tFull) && ~isempty(trace.yFull)
+    if isfield(trace,"tFull") && isfield(trace,"yFull") &&  ~isempty(trace.tFull) && ~isempty(trace.yFull)
         sourceTime = trace.tFull(:);
         sourceSignal = trace.yFull(:);
     else
@@ -217,37 +198,31 @@ function thermalTrace = smoothThermalTrace(trace,S)
     end
 
     timeSteps = diff(sourceTime);
-    if numel(sourceTime) < 3 || any(~isfinite(sourceTime)) || ...
-            any(~isfinite(sourceSignal)) || any(timeSteps <= 0)
-        error("TGS:Trace", ...
-            "The run must contain finite, increasing time samples.");
+    
+    if numel(sourceTime) < 3 || any(~isfinite(sourceTime)) || any(~isfinite(sourceSignal)) || any(timeSteps <= 0)
+        error("TGS:Trace", "The run must contain finite, increasing time samples.");
     end
-    if ~isscalar(S.smoothTime) || ~isfinite(S.smoothTime) || ...
-            S.smoothTime < 0
-        error("TGS:Smoothing", ...
-            "S.smoothTime must be a nonnegative finite duration.");
+    
+    if ~isscalar(S.smoothTime) || ~isfinite(S.smoothTime) || S.smoothTime < 0
+        error("TGS:Smoothing", "S.smoothTime must be a nonnegative finite duration.");
     end
 
     if S.smoothTime == 0
         smoothedSignal = sourceSignal;
     else
-        smoothedSignal = movmean(sourceSignal,S.smoothTime, ...
-            "SamplePoints",sourceTime,"Endpoints","shrink");
+        smoothedSignal = movmean(sourceSignal,S.smoothTime,"SamplePoints",sourceTime,"Endpoints","shrink");
     end
 
     thermalTrace = trace;
     thermalTrace.t = trace.t(:);
-    thermalTrace.y = interp1(sourceTime,smoothedSignal, ...
-        thermalTrace.t,"linear");
+    thermalTrace.y = interp1(sourceTime,smoothedSignal,thermalTrace.t,"linear");
 end
 
-function [weightedFit,state] = weightedThermalModel( ...
-        x,~,trace,S,weight)
-%WEIGHTEDTHERMALMODEL Profile temperature, displacement, and offset terms.
+function [weightedFit,state] = weightedThermalModel( x,~,trace,S,weight)
+% Profile temperature, displacement, and offset terms
 
     p = physicalParameters(x);
-    [temperature,displacement] = TwoLayerModel( ...
-        trace.t,trace.Lambda,p,S);
+    [temperature,displacement] = TwoLayerModel(trace.t,trace.Lambda,p,S);
     design = [temperature,displacement,ones(size(trace.t(:)))];
     [yfit,coefficients] = linearFit(design,trace.y);
 
@@ -262,7 +237,7 @@ function [weightedFit,state] = weightedThermalModel( ...
 end
 
 function p = physicalParameters(x)
-%PHYSICALPARAMETERS Convert three log10 coordinates to physical values.
+% Convert three log10 coordinates to physical values.
 
     x = x(:).';
     if numel(x) ~= 3 || any(~isfinite(x))
@@ -273,7 +248,7 @@ function p = physicalParameters(x)
 end
 
 function [yfit,coefficients] = linearFit(design,y)
-%LINEARFIT Solve scaled linear nuisance amplitudes at fixed physical values.
+% Solve scaled linear nuisance amplitudes at fixed physical values.
 
     y = y(:);
     if size(design,1) ~= numel(y)
@@ -298,31 +273,33 @@ function [yfit,coefficients] = linearFit(design,y)
 end
 
 function weight = traceWeight(trace)
-%TRACEWEIGHT Scale one residual by measured pre-pump noise when available.
+% Scale one residual by measured pre-pump noise when available
 
     y = trace.y(:);
     if any(~isfinite(y))
-        error("TGS:DataScale", ...
-            "The measured run contains nonfinite values.");
+        error("TGS:DataScale", "The measured run contains nonfinite values.");
     end
 
     scale = NaN;
+    
     if isfield(trace,"noiseStd") && isscalar(trace.noiseStd) && ...
             isfinite(trace.noiseStd) && trace.noiseStd > 0
         scale = trace.noiseStd;
     end
+    
     if ~isfinite(scale) || scale <= 0
         scale = norm(y-mean(y));
     end
+    
     if scale == 0
-        error("TGS:DataScale", ...
-            "The measured run has no signal variation.");
+        error("TGS:DataScale", "The measured run has no signal variation.");
     end
+    
     weight = 1/scale;
 end
 
 function statistics = nonlinearStatistics(J,resnorm,linearParameterCount)
-%NONLINEARSTATISTICS Calculate covariance and scaled-Jacobian rank metrics.
+% Calculate covariance and scaled-Jacobian rank metrics
 
     J = full(J);
     parameterCount = size(J,2);
