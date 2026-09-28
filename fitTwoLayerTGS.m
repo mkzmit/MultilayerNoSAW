@@ -1,8 +1,10 @@
-function fit = fitTwoLayerTGS(trace,S)
+function fit = fitTwoLayerTGS(trace,S,initializationTrace)
 % Fit alpha_f, alpha_s, and R for one  run
 % Inputs:
 %   trace - Scalar prepared-trace structure from prepareTGSData
-%   S - Model, bounds, smoothing, and optimizer settings
+%   S - Model, bounds, FFT-initialization, and optimizer settings
+%   initializationTrace - Optional FFT-smoothed copy of trace. Repeated-run
+%                         callers use this to share one detected SAW peak.
 % Output:
 %   fit - Thermal-model parameters, reconstructed signal, and diagnostics
 
@@ -13,8 +15,27 @@ function fit = fitTwoLayerTGS(trace,S)
     [x0,lowerX,upperX] = physicalSearchSpace(S);
     options = fittingOptions(S);
 
-%% Fit a smoothed trace to initialize the physical parameters
-    initializationTrace = smoothThermalTrace(trace,S);
+%% Build an FFT-smoothed trace only for physical-parameter initialization
+    if nargin < 3 || isempty(initializationTrace)
+        [initializationTrace,fftInitialization] = ...
+            fftThermalInitialization(trace,S);
+    else
+        if ~isscalar(initializationTrace) || ...
+                ~isfield(initializationTrace,"fftInitialized") || ...
+                ~isequal(initializationTrace.fftInitialized,true) || ...
+                ~isfield(initializationTrace,"fftInitialization")
+            error("TGS:InitializationTrace", ...
+                "The supplied initialization trace must come from fftThermalInitialization.");
+        end
+        fftInitialization = initializationTrace.fftInitialization;
+    end
+
+    if numel(initializationTrace.t) ~= numel(trace.t) || ...
+            any(initializationTrace.t(:) ~= trace.t(:))
+        error("TGS:InitializationTrace", ...
+            "The FFT initialization and final-fit traces must use the same fit samples.");
+    end
+
     initializationWeight = traceWeight(initializationTrace);
     initializationData = initializationWeight*initializationTrace.y(:);
     dummyData = zeros(size(initializationData));
@@ -33,7 +54,7 @@ function fit = fitTwoLayerTGS(trace,S)
     end
     xThermal = xThermal(:).';
 
-%% Fit the unsmoothed thermal and displacement response
+%% Fit the original unsmoothed response without an added SAW term
     fitTrace = finalFitTrace(trace,S);
     finalStarts = multistartPoints([xThermal;x0],lowerX,upperX,S);
     finalWeight = traceWeight(fitTrace);
@@ -166,6 +187,8 @@ function fit = fitTwoLayerTGS(trace,S)
     fit.physicalDegreesOfFreedom = statistics.degreesOfFreedom;
     fit.physicalCovariance = statistics.covariance;
     fit.physicalCorrelation = statistics.correlation;
+    fit.fftInitialization = fftInitialization;
+    fit.initializationTrace = initializationTrace;
 end
 
 function [x0,lowerX,upperX] = physicalSearchSpace(S)
@@ -286,38 +309,6 @@ function options = fittingOptions(S)
         "StepTolerance",S.xtol, ...
         "OptimalityTolerance",S.gtol, ...
         "Display",S.display);
-end
-
-function thermalTrace = smoothThermalTrace(trace,S)
-% Smooth the full-resolution signal for initialization
-
-    if isfield(trace,"tFull") && isfield(trace,"yFull") &&  ~isempty(trace.tFull) && ~isempty(trace.yFull)
-        sourceTime = trace.tFull(:);
-        sourceSignal = trace.yFull(:);
-    else
-        sourceTime = trace.t(:);
-        sourceSignal = trace.y(:);
-    end
-
-    timeSteps = diff(sourceTime);
-    
-    if numel(sourceTime) < 3 || any(~isfinite(sourceTime)) || any(~isfinite(sourceSignal)) || any(timeSteps <= 0)
-        error("TGS:Trace", "The run must contain finite, increasing time samples.");
-    end
-    
-    if ~isscalar(S.smoothTime) || ~isfinite(S.smoothTime) || S.smoothTime < 0
-        error("TGS:Smoothing", "S.smoothTime must be a nonnegative finite duration.");
-    end
-
-    if S.smoothTime == 0
-        smoothedSignal = sourceSignal;
-    else
-        smoothedSignal = movmean(sourceSignal,S.smoothTime,"SamplePoints",sourceTime,"Endpoints","shrink");
-    end
-
-    thermalTrace = trace;
-    thermalTrace.t = trace.t(:);
-    thermalTrace.y = interp1(sourceTime,smoothedSignal,thermalTrace.t,"linear");
 end
 
 function [weightedFit,state] = weightedThermalModel( x,~,trace,S,weight)

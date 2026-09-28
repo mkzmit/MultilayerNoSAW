@@ -19,8 +19,13 @@ function results = MainTwoLayerScript()
     S.nShift = 0;            % Samples retained before detected arrival
     S.tFit = [0,inf];        % Preprocessing interval relative to arrival [s]
     S.nFitPoints = 800;      % Maximum nonlinear-fit samples per run
-    S.smoothTime = 4e-9;     % Thermal-prefit moving-average width [s]
     S.fitStartTime = 0;      % Additional final-fit delay [s]
+
+%% User inputs: FFT smoothing used only for thermal initialization
+    S.sawVelocityRange = [1.5e3,3e3]; % SAW search range [m/s]
+    S.sawBandFraction = 0.10;          % IFFT half-band / detected frequency
+    S.sawMinPeakRatio = 3.25;          % Peak / in-band median amplitude
+    S.sawFFTTruncateFraction = 0.9;    % Post-pump fraction used for detection
 
 %% User inputs: known film and substrate properties
     S.L = 1.5e-6;           % Film thickness [m]
@@ -89,6 +94,12 @@ function results = MainTwoLayerScript()
     results.runFits = fit.fits;
     results.runSummary = fit.runSummary;
     results.runCount = fit.runCount;
+    results.initializationTraces = fit.initializationTraces;
+    results.fftInitialization = fit.fftInitialization;
+    results.initializationSAWFrequencyHz = ...
+        fit.initializationSAWFrequencyHz;
+    results.initializationBandPowerRemovedFraction = ...
+        fit.initializationBandPowerRemovedFraction;
     results.r = fit.r;
     results.resnorm = fit.resnorm;
     results.objectiveResnorm = fit.objectiveResnorm;
