@@ -1,10 +1,10 @@
 function results = MainTwoLayerScript()
-% Fit alpha_f, alpha_s, and R for one spot and grating
-% Edit the user-input section, then call results = MainTwoLayerScript
+% Fit alpha_f, alpha_s, and R for each run from one spot and grating.
+% Edit the user-input section, then call results = MainTwoLayerScript.
 
 %% User inputs: files and naming convention
-    S.dataDir = "";
-    S.calFile = "";
+    S.dataDir = "C:\Users\Maken\OneDrive - Massachusetts Institute of Technology\FFUSars\TGS Data rep-20261006T182917Z-1-001\TGS Data rep\MKZ_coatings\WonNb\2026-08-11";
+    S.calFile = "C:\Users\Maken\OneDrive - Massachusetts Institute of Technology\FFUSars\TGS Data rep-20261006T182917Z-1-001\TGS Data rep\MKZ_coatings\WonNb\2026-08-11\WonNb_spot1_postprocessing.txt";
     S.filePattern = "*.txt";
     S.fileRegex = "(?<nominal>\d+\.\d+)(?:um)?[_-]" + "(?<location>baseline|spot\d+(?:-baseline)?)-" + "(?<polarity>POS|NEG)-(?<run>\d+)\.txt$";
 
@@ -24,7 +24,7 @@ function results = MainTwoLayerScript()
 %% User inputs: FFT smoothing used only for thermal initialization
     S.sawVelocityRange = [1.5e3,3e3]; % SAW search range [m/s]
     S.sawBandFraction = 0.10;          % IFFT half-band / detected frequency
-    S.sawMinPeakRatio = 3.25;          % Peak / in-band median amplitude
+    S.sawMinPeakRatio = 2.0;           % Repeated-run peak / median amplitude
     S.sawFFTTruncateFraction = 0.9;    % Post-pump fraction used for detection
 
 %% User inputs: known film and substrate properties
@@ -55,15 +55,10 @@ function results = MainTwoLayerScript()
     S.ftol = 1e-8;
     S.xtol = 1e-8;
     S.gtol = 1e-8;
-    S.boundTolerance = 1e-6; % Bound test in log10 parameter coordinates
     S.dx = 2e-3;             % Finite-difference step in log10 coordinates
     S.multistartCount = 24;   % Total final-fit starts per run
     S.multistartSeed = 1;     % Reproducible log-space start-point sampling
-    S.display = "off";       % Solver output; run progress still prints
-
-%% User inputs: plotting
-    S.makePlots = true;
-    S.figureVisible = "on";
+    S.display = "off";        % Solver output
 
 %% Load the one selected spot and grating
     [traces,spot] = prepareTGSData(S);
@@ -76,57 +71,8 @@ function results = MainTwoLayerScript()
     end
 
 %% Fit each run independently
-    fit = fitTwoLayerTGSRuns(traces,S);
+    results = fitTwoLayerTGSRuns(traces,S);
 
-%% Package the ordered per-run results without averaging
-    results.spot = spot;
-    results.run = fit.run;
-    results.p = fit.p;
-    results.alpha_f = fit.p(:,1);
-    results.alpha_s = fit.p(:,2);
-    results.R = fit.p(:,3);
-    results.x = fit.x;
-    results.sensitivity = fit.sensitivity;
-    results.parameterError = fit.parameterError;
-    results.parameterIdentifiable = fit.parameterIdentifiable;
-    results.identifiable = fit.identifiable;
-    results.traces = fit.traces;
-    results.runFits = fit.fits;
-    results.runSummary = fit.runSummary;
-    results.runCount = fit.runCount;
-    results.initializationTraces = fit.initializationTraces;
-    results.fftInitialization = fit.fftInitialization;
-    results.initializationSAWFrequencyHz = ...
-        fit.initializationSAWFrequencyHz;
-    results.initializationBandPowerRemovedFraction = ...
-        fit.initializationBandPowerRemovedFraction;
-    results.r = fit.r;
-    results.resnorm = fit.resnorm;
-    results.objectiveResnorm = fit.objectiveResnorm;
-    results.exitflag = fit.exitflag;
-    results.output = fit.output;
-    results.startResults = fit.startResults;
-    results.selectedStart = fit.selectedStart;
-    results.startCount = fit.startCount;
-    results.successfulStartCount = fit.successfulStartCount;
-    results.atLowerBound = fit.atLowerBound;
-    results.atUpperBound = fit.atUpperBound;
-    results.jacobianRank = fit.jacobianRank;
-    results.jacobianCondition = fit.jacobianCondition;
-    results.degreesOfFreedom = fit.degreesOfFreedom;
-    results.physicalJacobianRank = fit.physicalJacobianRank;
-    results.physicalJacobianCondition = fit.physicalJacobianCondition;
-    results.physicalDegreesOfFreedom = fit.physicalDegreesOfFreedom;
-
-%% Report each run in acquisition order
-    results.summary = results.runSummary;
-    fprintf("spot %d, %d run(s), 1 grating\n",spot,fit.runCount);
-    disp(results.runSummary)
-
-%% Create one fit-and-sensitivity figure per run
-    if S.makePlots
-        results.figures = plotTwoLayerTGSResults(results,S);
-    else
-        results.figures = gobjects(0,1);
-    end
+%% Report only the requested per-run values
+    disp(results)
 end

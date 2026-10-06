@@ -1,12 +1,12 @@
 function fit = fitTwoLayerTGS(trace,S,initializationTrace)
-% Fit alpha_f, alpha_s, and R for one  run
+% Fit alpha_f, alpha_s, and R for one run.
 % Inputs:
 %   trace - Scalar prepared-trace structure from prepareTGSData
 %   S - Model, bounds, FFT-initialization, and optimizer settings
 %   initializationTrace - Optional FFT-smoothed copy of trace. Repeated-run
 %                         callers use this to share one detected SAW peak.
 % Output:
-%   fit - Thermal-model parameters, reconstructed signal, and diagnostics
+%   fit - Thermal-model parameters and selected multistart trial index.
 
 %% Validate 
     if ~isscalar(trace)
@@ -17,8 +17,7 @@ function fit = fitTwoLayerTGS(trace,S,initializationTrace)
 
 %% Build an FFT-smoothed trace only for physical-parameter initialization
     if nargin < 3 || isempty(initializationTrace)
-        [initializationTrace,fftInitialization] = ...
-            fftThermalInitialization(trace,S);
+        initializationTrace = fftThermalInitialization(trace,S);
     else
         if ~isscalar(initializationTrace) || ...
                 ~isfield(initializationTrace,"fftInitialized") || ...
@@ -27,7 +26,6 @@ function fit = fitTwoLayerTGS(trace,S,initializationTrace)
             error("TGS:InitializationTrace", ...
                 "The supplied initialization trace must come from fftThermalInitialization.");
         end
-        fftInitialization = initializationTrace.fftInitialization;
     end
 
     if numel(initializationTrace.t) ~= numel(trace.t) || ...
@@ -62,25 +60,22 @@ function fit = fitTwoLayerTGS(trace,S,initializationTrace)
     dummyData = zeros(size(measuredWeighted));
     thermalModel = @(x,xdata) weightedThermalModel( x,xdata,fitTrace,S,finalWeight);
 
-    startResults = repmat(struct("x0",[],"x",nan(1,3), ...
-        "resnorm",Inf,"exitflag",NaN,"output",[], ...
-        "errorIdentifier","","errorMessage",""),size(finalStarts,1),1);
+    startResults = repmat(struct("x",nan(1,3), ...
+        "resnorm",Inf,"exitflag",NaN,"errorMessage",""), ...
+        size(finalStarts,1),1);
     bestResnorm = Inf;
     selectedStart = NaN;
     bestConverged = false;
 
     for startIndex = 1:size(finalStarts,1)
-        startResults(startIndex).x0 = finalStarts(startIndex,:);
         try
-            [candidateX,candidateResnorm,candidateResidual, ...
-                candidateExitflag,candidateOutput,~,candidateJacobian] = ...
+            [candidateX,candidateResnorm,~,candidateExitflag] = ...
                 lsqcurvefit(thermalModel,finalStarts(startIndex,:), ...
                 dummyData,measuredWeighted,lowerX,upperX,options);
         catch exception
             if strcmp(exception.identifier,"MATLAB:OperationTerminated")
                 rethrow(exception)
             end
-            startResults(startIndex).errorIdentifier = string(exception.identifier);
             startResults(startIndex).errorMessage = string(exception.message);
             continue
         end
@@ -88,7 +83,6 @@ function fit = fitTwoLayerTGS(trace,S,initializationTrace)
         startResults(startIndex).x = candidateX(:).';
         startResults(startIndex).resnorm = candidateResnorm;
         startResults(startIndex).exitflag = candidateExitflag;
-        startResults(startIndex).output = candidateOutput;
 
         candidateIsFinite = isfinite(candidateResnorm) && ...
             all(isfinite(candidateX));
@@ -102,10 +96,6 @@ function fit = fitTwoLayerTGS(trace,S,initializationTrace)
         if candidateIsBetter
             bestX = candidateX(:).';
             bestResnorm = candidateResnorm;
-            objectiveResidual = candidateResidual;
-            exitflag = candidateExitflag;
-            output = candidateOutput;
-            jacobian = candidateJacobian;
             selectedStart = startIndex;
             bestConverged = candidateConverged;
         end
@@ -125,70 +115,14 @@ function fit = fitTwoLayerTGS(trace,S,initializationTrace)
 
     successfulStart = arrayfun(@(trial) trial.exitflag > 0 && ...
         isfinite(trial.resnorm) && all(isfinite(trial.x)),startResults);
-    successfulStartCount = nnz(successfulStart);
-    if successfulStartCount == 0
+    if ~any(successfulStart)
         warning("TGS:Optimization", ...
             "No multistart trial reported convergence; using the lowest finite objective.");
     end
 
-%% Reconstruct the unweighted thermal-model signal
-    [yfit,rebuilt] = weightedThermalModel(bestX,[],fitTrace,S,1);
-    measured = fitTrace.y(:);
-    physicalValues = 10.^bestX;
-
-%% Calculate uncertainty and identifiability diagnostics
-    boundTolerance = S.dx;
-    if isfield(S,"boundTolerance") && isfinite(S.boundTolerance) && S.boundTolerance >= 0
-        boundTolerance = S.boundTolerance;
-    end
-
-    atLowerBound = abs(bestX-lowerX) <= boundTolerance;
-    atUpperBound = abs(bestX-upperX) <= boundTolerance;
-    physicalAtBound = atLowerBound | atUpperBound;
-    statistics = nonlinearStatistics( ...
-        jacobian,bestResnorm,rebuilt.linearRank);
-    xError = statistics.xError;
-    xError(physicalAtBound) = NaN;
-    statisticsValid = statistics.fullRank && ...
-        statistics.degreesOfFreedom > 0;
-    parameterIdentifiable = statisticsValid & ~physicalAtBound;
-
 %% Package the per-run result
-    fit.x = bestX;
-    fit.p = physicalValues;
-    fit.optimizerX = bestX;
-    fit.resnorm = bestResnorm;
-    fit.r = measured-yfit;
-    fit.objectiveResidual = objectiveResidual;
-    fit.yfit = yfit;
-    fit.traces = rebuilt;
-    fit.exitflag = exitflag;
-    fit.output = output;
-    fit.startResults = startResults;
+    fit.p = 10.^bestX;
     fit.selectedStart = selectedStart;
-    fit.successfulStartCount = successfulStartCount;
-    fit.J = jacobian;
-    fit.atLowerBound = atLowerBound;
-    fit.atUpperBound = atUpperBound;
-    fit.parameterError = log(10)*physicalValues.*xError.';
-    fit.sensitivity = vecnorm(jacobian,2,1);
-    fit.parameterIdentifiable = parameterIdentifiable;
-    fit.identifiable = all(parameterIdentifiable);
-    fit.jacobianColumnNorm = statistics.columnNorm;
-    fit.jacobianSingularValues = statistics.singularValues;
-    fit.jacobianRank = statistics.rank;
-    fit.jacobianCondition = statistics.condition;
-    fit.degreesOfFreedom = statistics.degreesOfFreedom;
-    fit.covariance = statistics.covariance;
-    fit.correlation = statistics.correlation;
-    fit.physicalJacobianSingularValues = statistics.singularValues;
-    fit.physicalJacobianRank = statistics.rank;
-    fit.physicalJacobianCondition = statistics.condition;
-    fit.physicalDegreesOfFreedom = statistics.degreesOfFreedom;
-    fit.physicalCovariance = statistics.covariance;
-    fit.physicalCorrelation = statistics.correlation;
-    fit.fftInitialization = fftInitialization;
-    fit.initializationTrace = initializationTrace;
 end
 
 function [x0,lowerX,upperX] = physicalSearchSpace(S)
@@ -311,22 +245,15 @@ function options = fittingOptions(S)
         "Display",S.display);
 end
 
-function [weightedFit,state] = weightedThermalModel( x,~,trace,S,weight)
+function weightedFit = weightedThermalModel(x,~,trace,S,weight)
 % Profile temperature, displacement, and offset terms
 
     p = physicalParameters(x);
     [temperature,displacement] = TwoLayerModel(trace.t,trace.Lambda,p,S);
     design = [temperature,displacement,ones(size(trace.t(:)))];
-    [yfit,coefficients] = linearFit(design,trace.y);
+    yfit = linearFit(design,trace.y);
 
     weightedFit = weight*yfit;
-    state = trace;
-    state.Theta = temperature;
-    state.Uz = displacement;
-    state.c = coefficients;
-    state.yfit = yfit;
-    state.r = trace.y(:)-yfit;
-    state.linearRank = rank(design);
 end
 
 function p = physicalParameters(x)
@@ -340,7 +267,7 @@ function p = physicalParameters(x)
     p = 10.^x;
 end
 
-function [yfit,coefficients] = linearFit(design,y)
+function yfit = linearFit(design,y)
 % Solve scaled linear nuisance amplitudes at fixed physical values.
 
     y = y(:);
@@ -389,57 +316,4 @@ function weight = traceWeight(trace)
     end
     
     weight = 1/scale;
-end
-
-function statistics = nonlinearStatistics(J,resnorm,linearParameterCount)
-% Calculate covariance and scaled-Jacobian rank metrics
-
-    J = full(J);
-    parameterCount = size(J,2);
-    columnNorm = vecnorm(J,2,1);
-    validColumn = isfinite(columnNorm) & columnNorm > 0;
-    scaledJ = zeros(size(J));
-    scaledJ(:,validColumn) = J(:,validColumn)./columnNorm(validColumn);
-    [~,singularMatrix,rightVectors] = svd(scaledJ,"econ");
-    singularValues = diag(singularMatrix);
-
-    if isempty(singularValues) || ~isfinite(singularValues(1))
-        nonlinearRank = 0;
-        conditionNumber = Inf;
-    else
-        tolerance = max(size(scaledJ))*eps(singularValues(1));
-        nonlinearRank = nnz(singularValues > tolerance);
-        if nonlinearRank == parameterCount && singularValues(end) > 0
-            conditionNumber = singularValues(1)/singularValues(end);
-        else
-            conditionNumber = Inf;
-        end
-    end
-
-    degreesOfFreedom = size(J,1)-linearParameterCount-nonlinearRank;
-    fullRank = all(validColumn) && nonlinearRank == parameterCount;
-    covariance = nan(parameterCount);
-    correlation = nan(parameterCount);
-    xError = nan(parameterCount,1);
-
-    if fullRank && degreesOfFreedom > 0
-        inverseScale = diag(1./columnNorm);
-        covariance = (resnorm/degreesOfFreedom)*(inverseScale* ...
-            rightVectors*diag(1./singularValues.^2)*rightVectors.'* ...
-            inverseScale);
-        covariance = (covariance+covariance.')/2;
-        xError = sqrt(max(diag(covariance),0));
-        standardDeviation = sqrt(diag(covariance));
-        correlation = covariance./(standardDeviation*standardDeviation.');
-    end
-
-    statistics.columnNorm = columnNorm;
-    statistics.singularValues = singularValues;
-    statistics.rank = nonlinearRank;
-    statistics.condition = conditionNumber;
-    statistics.degreesOfFreedom = degreesOfFreedom;
-    statistics.fullRank = fullRank;
-    statistics.covariance = covariance;
-    statistics.correlation = correlation;
-    statistics.xError = xError;
 end

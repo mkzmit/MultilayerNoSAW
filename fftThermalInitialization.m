@@ -81,11 +81,6 @@ function [initializationTraces,diagnostics] = fftThermalInitialization(traces,S)
     else
         sawFrequencyHz = NaN;
         halfBandwidthHz = NaN;
-        warning("TGS:SAWNotDetected", ...
-            "No FFT peak in %.4g-%.4g MHz exceeded the required " + ...
-            "peak ratio of %.3g; the initialization traces were left unchanged.", ...
-            settings.searchBandHz(1)/1e6,settings.searchBandHz(2)/1e6, ...
-            requiredPeakRatio);
     end
 
     if detected && halfBandwidthHz < settings.nativeResolutionHz
@@ -357,7 +352,9 @@ function settings = sawSettings(S,lambda,sampleRate,recordDuration)
             "S.sawSpectrumSmoothBins must be a positive integer.");
     end
 
-    settings.minPeakRatio = 3.25;
+    % Repeat-run spectra are normalized individually and combined by their
+    % median, so a lower threshold is appropriate than for one trace.
+    settings.minPeakRatio = 2.0;
     if isfield(S,"sawMinPeakRatio")
         settings.minPeakRatio = double(S.sawMinPeakRatio);
     end

@@ -29,6 +29,7 @@ function [traces,selectedSpot] = prepareTGSData(S)
     LambdaUm = calibrationSpacing(T);
 
     selectedSpot = calibrationSpot(runName,calListing.name);
+    dataPrefix = calibrationDataPrefix(runName,S.fileRegex);
 
 %% Build the nominal-to-calibrated grating map
     nominalUm = nan(numel(runName),1);
@@ -49,16 +50,9 @@ function [traces,selectedSpot] = prepareTGSData(S)
         cal(key(nominal)) = candidates(closest)*1e-6;
     end
 
-    calKeys = keys(cal);
-    nominalList = str2double(string(calKeys));
-    LambdaList = cellfun(@(mapKey) cal(mapKey),calKeys);
-    [nominalList,order] = sort(nominalList);
-    calibratedList = 1e6*LambdaList(order);
-    disp(table(nominalList(:),calibratedList(:), ...
-        'VariableNames',{'Nominal_um','Calibrated_um'}))
-
 %% Discover and parse measurement files
     listing = dir(fullfile(S.dataDir,S.filePattern));
+    listing = listing(startsWith(string({listing.name}),dataPrefix));
     fileTemplate = struct("nominal",[],"spot",[],"polarity","", ...
         "run",[],"baseline",false,"path","");
     files = repmat(fileTemplate,numel(listing),1);
@@ -311,6 +305,32 @@ function nominalUm = calibrationNominal(runName)
     else
         nominalUm = str2double(token.nominal);
     end
+end
+
+function prefix = calibrationDataPrefix(runName,fileRegex)
+% Restrict discovery to the measurement family named by the calibration.
+
+    prefixByRow = strings(numel(runName),1);
+    for i = 1:numel(runName)
+        fileName = runName(i);
+        if ~endsWith(fileName,".txt","IgnoreCase",true)
+            fileName = fileName+".txt";
+        end
+        matchStart = regexp(char(fileName),char(fileRegex),"start","once");
+        if isempty(matchStart)
+            error("TGS:CalibrationName", ...
+                "Calibration run_name '%s' does not match S.fileRegex.", ...
+                runName(i));
+        end
+        prefixByRow(i) = extractBefore(fileName,matchStart);
+    end
+
+    prefixList = unique(prefixByRow);
+    if numel(prefixList) ~= 1
+        error("TGS:CalibrationName", ...
+            "Calibration run_name rows identify more than one measurement filename family.");
+    end
+    prefix = prefixList;
 end
 
 function spot = calibrationSpot(runName,calibrationName)
