@@ -3,8 +3,8 @@ function results = MainTwoLayerScript()
 % Edit the user-input section, then call results = MainTwoLayerScript
 
 %% User inputs: files and naming convention
-    S.dataDir = "C:\Users\Maken\OneDrive - Massachusetts Institute of Technology\FFUSars\MultilayerV2-model-work\MultilayerV2-model-work\tungsten_depth_study";
-    S.calFile = "C:\Users\Maken\OneDrive - Massachusetts Institute of Technology\FFUSars\MultilayerV2-model-work\MultilayerV2-model-work\tungsten_depth_study\Tungsten_Calibration_06.40um_postprocessing.txt";
+    S.dataDir = "";
+    S.calFile = "";
     S.filePattern = "*.txt";
     S.fileRegex = "(?<nominal>\d+\.\d+)(?:um)?[_-]" + "(?<location>baseline|spot\d+(?:-baseline)?)-" + "(?<polarity>POS|NEG)-(?<run>\d+)\.txt$";
 
@@ -39,9 +39,9 @@ function results = MainTwoLayerScript()
     S.alphaths = 7.07e-6;   % Substrate thermal expansion coefficient [K^-1]
 
 %% User inputs: [alpha_f, alpha_s, R] guess and bounds
-    S.p0 = [6.7e-5,2.7e-5,1e-10];
+    S.p0 = [6.7e-5,2.7e-5,1e-8];
     S.pLower = [1.5e-7,1.5e-7,1e-14];
-    S.pUpper = [1e-1,1e-1,1e-6];
+    S.pUpper = [1e-4,1e-4,1e-6];
 
 %% User inputs: Fourier reconstruction
     S.Nw = 256;             % Even number of angular-frequency samples
